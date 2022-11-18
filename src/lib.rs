@@ -16,29 +16,33 @@ pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin> {
     capacity: usize,
 }
 
-struct PushBack<T> {
-    buf: VecDeque<T>,
+#[derive(Debug)]
+struct PushBack<'a, T: Clone + Debug + Unpin> {
+    buf: &'a mut ConstSizeVecDeque<T>,
     value: T,
 }
 
-impl<T> PushBack<T> {
-    fn new(buf: VecDeque<T>, value: T) -> Self {
+impl<'a, T: Clone + Debug + Unpin> PushBack<'a, T> {
+    fn new(buf: &'a mut ConstSizeVecDeque<T>, value: T) -> Self {
         Self { buf, value }
     }
 }
 
-impl<T> Future for PushBack<T> {
+impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // if self.is_full() {
-        //     todo!()
-        // } else {
-        //     self.buf.push_back(value);
-        //     future::ready(())
-        // }
+        println!("Buffer len: {:?}", self.buf.len());
 
-        todo!()
+        if self.buf.is_full() {
+            Poll::Pending
+        } else {
+            let value = self.value.clone();
+            self.get_mut().buf.internal_push_back(value.clone());
+            println!("Added: {:?}", value);
+
+            Poll::Ready(())
+        }
     }
 }
 pub struct PopFront<T> {
@@ -62,7 +66,7 @@ impl<T> Future for PopFront<T> {
     }
 }
 
-impl<T: Clone> ConstSizeVecDeque<T> {
+impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     pub fn new(len: usize) -> Self {
         Self {
             buf: VecDeque::default(),
@@ -78,17 +82,19 @@ impl<T: Clone> ConstSizeVecDeque<T> {
         self.buf.is_empty()
     }
 
-    pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> {
-        let push_back = PushBack::new(self.buf.clone(), value);
+    pub fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
+        let push_back = PushBack::new(self, value.clone());
+        println!("PushBack: {push_back:?}");
         push_back.into_future()
     }
 
-    pub async fn pop_front(&mut self) -> Option<T> {
-        if self.is_empty() {
-            None
-        } else {
-            todo!()
-        }
+    fn internal_push_back(&mut self, value: T) {
+        self.buf.push_back(value)
+    }
     }
 }
 
@@ -106,6 +112,7 @@ mod tests {
 
         // fill it with 10 items
         for item in 0..10 {
+            println!("Item: {item:?}");
             tester.push_back(item).await;
         }
 
