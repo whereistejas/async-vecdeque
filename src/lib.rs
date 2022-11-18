@@ -1,7 +1,48 @@
 #![feature(test)]
+use std::{
+    collections::VecDeque,
+    future::{self, Future},
+};
 
 extern crate test;
+pub struct ConstSizeVecDeque<T: Clone> {
+    buf: VecDeque<T>,
+    len: usize,
+}
 
+impl<T: Clone> ConstSizeVecDeque<T> {
+    pub fn new(len: usize) -> Self {
+        Self {
+            buf: VecDeque::default(),
+            len,
+        }
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.len < self.buf.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buf.is_empty()
+    }
+
+    pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> {
+        if self.is_full() {
+            todo!()
+        } else {
+            self.buf.push_back(value);
+            future::ready(())
+        }
+    }
+
+    pub async fn pop_front(&mut self) -> Option<T> {
+        if self.is_empty() {
+            None
+        } else {
+            todo!()
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
