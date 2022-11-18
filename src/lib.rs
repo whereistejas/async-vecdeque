@@ -43,25 +43,30 @@ impl<T: Clone> ConstSizeVecDeque<T> {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+    use tokio::time;
+
     use super::*;
-    use test::Bencher;
 
-    use std::fs::{remove_file, OpenOptions};
-    use std::io::Write;
-    use std::path::Path;
+    #[tokio::test]
+    async fn async_push_back() {
+        // create a new async vecdeque
+        let mut tester = ConstSizeVecDeque::new(10);
 
-    #[bench]
-    fn single_write(b: &mut Bencher) {
-        let path = Path::new("/tmp/random_test_file");
+        // fill it with 10 items
+        for item in 0..10 {
+            tester.push_back(item).await;
+        }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(path)
-            .unwrap();
+        // on the 11th item, the task should block.
+        let fut = tester.push_back(11);
+        let res = time::timeout(Duration::from_secs(1), fut).await;
+        assert!(res.is_err());
+    }
+}
 
         let array: [u64; 8] = rand::random();
 
