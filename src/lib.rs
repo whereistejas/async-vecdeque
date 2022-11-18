@@ -3,14 +3,17 @@
 
 use std::{
     collections::VecDeque,
+    fmt::Debug,
     future::{Future, IntoFuture},
     pin::Pin,
     task::{Context, Poll},
 };
 
-pub struct ConstSizeVecDeque<T: Clone> {
+// TODO: Get rid of this `Clone` and all the clones that follow it.
+#[derive(Debug, Clone)]
+pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin> {
     buf: VecDeque<T>,
-    len: usize,
+    capacity: usize,
 }
 
 struct PushBack<T> {
@@ -40,6 +43,9 @@ impl<T> Future for PushBack<T> {
 }
 pub struct PopFront<T> {
     buf: VecDeque<T>,
+#[derive(Debug)]
+pub struct PopFront<'a, T: Clone + Debug + Unpin> {
+    buf: &'a mut ConstSizeVecDeque<T>,
 }
 
 impl<T> PopFront<T> {
@@ -60,15 +66,15 @@ impl<T: Clone> ConstSizeVecDeque<T> {
     pub fn new(len: usize) -> Self {
         Self {
             buf: VecDeque::default(),
-            len,
+            capacity: len,
         }
     }
 
-    pub fn is_full(&self) -> bool {
-        self.len < self.buf.len()
+    fn is_full(&self) -> bool {
+        self.capacity == self.buf.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
 
@@ -109,25 +115,3 @@ mod tests {
         assert!(res.is_err());
     }
 }
-
-// use async_trait::async_trait;
-// #[async_trait]
-// pub trait PushBack<T: Send> {
-//     async fn push_back(&mut self, _value: T)
-//     where
-//         T: 'async_trait,
-//     {
-//         todo!()
-//     }
-// }
-
-// impl<T: Send> PushBack<T> for ConstSizeVecDeque<T> {}
-
-// #[async_trait]
-// pub trait PopFront<T> {
-//     async fn pop_front(&mut self) -> Option<T> {
-//         todo!()
-//     }
-// }
-
-// impl<T> PopFront<T> for ConstSizeVecDeque<T> {}
