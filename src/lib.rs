@@ -1,10 +1,8 @@
-#![feature(test)]
 use std::{
     collections::VecDeque,
     future::{self, Future},
 };
 
-extern crate test;
 pub struct ConstSizeVecDeque<T: Clone> {
     buf: VecDeque<T>,
     len: usize,
@@ -68,14 +66,24 @@ mod tests {
     }
 }
 
-        let array: [u64; 8] = rand::random();
+// use async_trait::async_trait;
+// #[async_trait]
+// pub trait PushBack<T: Send> {
+//     async fn push_back(&mut self, _value: T)
+//     where
+//         T: 'async_trait,
+//     {
+//         todo!()
+//     }
+// }
 
-        b.iter(|| {
-            for _ in 0..10_000 {
-                file.write_all(format!("{:?}\n", array).as_bytes()).unwrap();
-            }
-        });
+// impl<T: Send> PushBack<T> for ConstSizeVecDeque<T> {}
 
-        remove_file(path).unwrap();
-    }
-}
+// #[async_trait]
+// pub trait PopFront<T> {
+//     async fn pop_front(&mut self) -> Option<T> {
+//         todo!()
+//     }
+// }
+
+// impl<T> PopFront<T> for ConstSizeVecDeque<T> {}
