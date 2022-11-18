@@ -1,11 +1,59 @@
+#![allow(dead_code)]
+#![feature(into_future)]
+
 use std::{
     collections::VecDeque,
-    future::{self, Future},
+    future::{Future, IntoFuture},
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 pub struct ConstSizeVecDeque<T: Clone> {
     buf: VecDeque<T>,
     len: usize,
+}
+
+struct PushBack<T> {
+    buf: VecDeque<T>,
+    value: T,
+}
+
+impl<T> PushBack<T> {
+    fn new(buf: VecDeque<T>, value: T) -> Self {
+        Self { buf, value }
+    }
+}
+
+impl<T> Future for PushBack<T> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // if self.is_full() {
+        //     todo!()
+        // } else {
+        //     self.buf.push_back(value);
+        //     future::ready(())
+        // }
+
+        todo!()
+    }
+}
+pub struct PopFront<T> {
+    buf: VecDeque<T>,
+}
+
+impl<T> PopFront<T> {
+    fn new(buf: VecDeque<T>) -> Self {
+        Self { buf }
+    }
+}
+
+impl<T> Future for PopFront<T> {
+    type Output = Option<T>;
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        todo!()
+    }
 }
 
 impl<T: Clone> ConstSizeVecDeque<T> {
@@ -25,12 +73,8 @@ impl<T: Clone> ConstSizeVecDeque<T> {
     }
 
     pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> {
-        if self.is_full() {
-            todo!()
-        } else {
-            self.buf.push_back(value);
-            future::ready(())
-        }
+        let push_back = PushBack::new(self.buf.clone(), value);
+        push_back.into_future()
     }
 
     pub async fn pop_front(&mut self) -> Option<T> {
