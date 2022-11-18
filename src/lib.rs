@@ -45,24 +45,27 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
         }
     }
 }
-pub struct PopFront<T> {
-    buf: VecDeque<T>,
+
 #[derive(Debug)]
 pub struct PopFront<'a, T: Clone + Debug + Unpin> {
     buf: &'a mut ConstSizeVecDeque<T>,
 }
 
-impl<T> PopFront<T> {
-    fn new(buf: VecDeque<T>) -> Self {
+impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
+    fn new(buf: &'a mut ConstSizeVecDeque<T>) -> Self {
         Self { buf }
     }
 }
 
-impl<T> Future for PopFront<T> {
+impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
     type Output = Option<T>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        todo!()
+        if self.buf.is_empty() {
+            Poll::Ready(None)
+        } else {
+            todo!()
+        }
     }
 }
 
@@ -95,6 +98,11 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     fn internal_push_back(&mut self, value: T) {
         self.buf.push_back(value)
     }
+
+    pub fn pop_front(&mut self) -> impl Future<Output = Option<T>> + '_ {
+        let pop_front = PopFront::new(self);
+        println!("PopFront: {pop_front:?}");
+        pop_front.into_future()
     }
 }
 
