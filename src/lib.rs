@@ -33,10 +33,11 @@ struct PushBack<'a, T: Clone + Debug + Unpin> {
     buf: &'a mut ConstSizeVecDeque<T>,
     value: T,
 }
+
 impl<T: Clone + Debug + Unpin> Debug for PushBack<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "len: {:?}, cap: {:?}, shared_state: {:?} value: {:?}",
+            "push_back -> len: {:?}, cap: {:?}, shared_state: {:?} value: {:?}",
             self.buf.len(),
             self.buf.capacity,
             self.buf.shared_state,
@@ -82,6 +83,7 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
             }
 
             push_back.buf.internal_push_back(value.clone());
+            println!("{push_back:?}");
 
             Poll::Ready(())
         }
@@ -91,10 +93,11 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
 pub struct PopFront<'a, T: Clone + Debug + Unpin> {
     buf: &'a mut ConstSizeVecDeque<T>,
 }
+
 impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "len: {:?}, cap: {:?}, shared_state: {:?}",
+            "pop_front -> len: {:?}, cap: {:?}, shared_state: {:?}",
             self.buf.len(),
             self.buf.capacity,
             self.buf.shared_state
@@ -156,6 +159,11 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
                 waker.wake()
             }
         }
+    pub fn contains(&self, value: &T) -> bool
+    where
+        T: PartialEq,
+    {
+        self.buf.contains(value)
     }
 
     pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
@@ -163,7 +171,6 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         self.handle_shared_state();
 
         let push_back = PushBack::new(self, value.clone());
-        println!("{push_back:?}");
         push_back.into_future()
     }
 
@@ -180,13 +187,6 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         let value = self.buf.pop_front();
         value
     }
-
-    pub fn contains(&self, value: &T) -> bool
-    where
-        T: PartialEq,
-    {
-        self.buf.contains(value)
-    }
 }
 
 #[cfg(test)]
@@ -199,15 +199,15 @@ mod tests {
     #[tokio::test]
     async fn async_push_back() {
         // create a new async vecdeque.
-        let mut tester = ConstSizeVecDeque::new(9);
+        let mut tester = ConstSizeVecDeque::new(10);
 
         // fill it with 10 items
-        for item in 0..10 {
+        for item in 1..11 {
             tester.push_back(item).await;
         }
 
         // on the 11th item, the task should block.
-        let fut = tester.push_back(10);
+        let fut = tester.push_back(11);
         let res = time::timeout(Duration::from_secs(1), fut).await;
         assert!(res.is_err());
 
