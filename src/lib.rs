@@ -69,19 +69,6 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
         } else {
             let push_back = self.get_mut();
 
-            while let Some(state) = push_back.buf.shared_state.pop() {
-                if state.waker.is_none() {
-                    match &state.pending {
-                        Operation::PushBack(value) => {
-                            push_back.buf.internal_push_back(value.clone())
-                        }
-                        Operation::PopFront => push_back.buf.shared_state.push(state),
-                    }
-                } else {
-                    push_back.buf.shared_state.push(state)
-                }
-            }
-
             push_back.buf.internal_push_back(value.clone());
             println!("{push_back:?}");
 
@@ -152,13 +139,6 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         self.buf.len()
     }
 
-    fn handle_shared_state(&mut self) {
-        while let Some(state) = self.shared_state.iter_mut().next() {
-            println!("{state:?}");
-            if let Some(waker) = state.waker.take() {
-                waker.wake()
-            }
-        }
     pub fn contains(&self, value: &T) -> bool
     where
         T: PartialEq,
@@ -167,9 +147,6 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     }
 
     pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
-        // Check if there are any pending operations and finish them first.
-        self.handle_shared_state();
-
         let push_back = PushBack::new(self, value.clone());
         push_back.into_future()
     }
