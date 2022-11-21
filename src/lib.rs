@@ -52,6 +52,27 @@ impl<'a, T: Clone + Debug + Unpin> PushBack<'a, T> {
     }
 }
 
+pub struct PopFront<'a, T: Clone + Debug + Unpin> {
+    buf: &'a mut ConstSizeVecDeque<T>,
+}
+
+impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "pop_front -> len: {:?}, cap: {:?}, shared_state: {:?}",
+            self.buf.len(),
+            self.buf.capacity,
+            self.buf.shared_state
+        ))
+    }
+}
+
+impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
+    fn new(buf: &'a mut ConstSizeVecDeque<T>) -> Self {
+        Self { buf }
+    }
+}
+
 impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
     type Output = ();
 
@@ -74,27 +95,6 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
 
             Poll::Ready(())
         }
-    }
-}
-
-pub struct PopFront<'a, T: Clone + Debug + Unpin> {
-    buf: &'a mut ConstSizeVecDeque<T>,
-}
-
-impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "pop_front -> len: {:?}, cap: {:?}, shared_state: {:?}",
-            self.buf.len(),
-            self.buf.capacity,
-            self.buf.shared_state
-        ))
-    }
-}
-
-impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
-    fn new(buf: &'a mut ConstSizeVecDeque<T>) -> Self {
-        Self { buf }
     }
 }
 
