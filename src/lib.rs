@@ -147,19 +147,9 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         let push_back = PushBack::new(self, value.clone());
         push_back.into_future()
     }
-
-    fn internal_push_back(&mut self, value: T) {
-        self.buf.push_back(value)
-    }
-
     pub fn pop_front(&mut self) -> impl Future<Output = T> + '_ {
         let pop_front = PopFront::new(self);
         pop_front.into_future()
-    }
-
-    fn internal_pop_front(&mut self) -> Option<T> {
-        let value = self.buf.pop_front();
-        value
     }
 }
 
