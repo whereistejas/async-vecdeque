@@ -109,13 +109,21 @@ impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
 }
 
 impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
-    type Output = Option<T>;
+    type Output = T;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.buf.is_empty() {
-            Poll::Ready(None)
+            Poll::Pending
         } else {
-            Poll::Ready(self.get_mut().buf.internal_pop_front())
+            let pop_front = self.get_mut();
+
+            let element = pop_front.buf.internal_pop_front();
+            println!("{pop_front:?}");
+
+            match element {
+                Some(element) => Poll::Ready(element),
+                None => Poll::Pending,
+            }
         }
     }
 }
@@ -163,12 +171,8 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         self.buf.push_back(value)
     }
 
-    pub fn pop_front(&mut self) -> impl Future<Output = Option<T>> + '_ {
-        // Check if there are any pending operations and finish them first.
-        self.handle_shared_state();
-
+    pub fn pop_front(&mut self) -> impl Future<Output = T> + '_ {
         let pop_front = PopFront::new(self);
-        println!("{pop_front:?}");
         pop_front.into_future()
     }
 
