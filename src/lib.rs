@@ -12,14 +12,14 @@ use std::{
 // TODO: Get rid of this `Clone` and all the clones that follow it.
 #[derive(Debug, Clone)]
 pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin> {
-    buf: VecDeque<T>,
+    buffer: VecDeque<T>,
     capacity: usize,
     pending_push: Vec<(Option<Waker>, T)>,
     pending_pop: Vec<Option<Waker>>,
 }
 
 struct PushBack<'a, T: Clone + Debug + Unpin> {
-    buf: &'a mut ConstSizeVecDeque<T>,
+    buffer: &'a mut ConstSizeVecDeque<T>,
     value: T,
 }
 
@@ -27,9 +27,9 @@ impl<T: Clone + Debug + Unpin> Debug for PushBack<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "push_back -> len: {:?}, cap: {:?}, pending_push: {:?} value: {:?}",
-            self.buf.len(),
-            self.buf.capacity,
-            self.buf.pending_push,
+            self.buffer.len(),
+            self.buffer.capacity,
+            self.buffer.pending_push,
             self.value
         ))
     }
@@ -37,28 +37,28 @@ impl<T: Clone + Debug + Unpin> Debug for PushBack<'_, T> {
 
 impl<'a, T: Clone + Debug + Unpin> PushBack<'a, T> {
     fn new(buf: &'a mut ConstSizeVecDeque<T>, value: T) -> Self {
-        Self { buf, value }
+        Self { buffer: buf, value }
     }
 }
 
 pub struct PopFront<'a, T: Clone + Debug + Unpin> {
-    buf: &'a mut ConstSizeVecDeque<T>,
+    buffer: &'a mut ConstSizeVecDeque<T>,
 }
 
 impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "pop_front -> len: {:?}, cap: {:?}, pending_pop: {:?}",
-            self.buf.len(),
-            self.buf.capacity,
-            self.buf.pending_pop
+            self.buffer.len(),
+            self.buffer.capacity,
+            self.buffer.pending_pop
         ))
     }
 }
 
 impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
     fn new(buf: &'a mut ConstSizeVecDeque<T>) -> Self {
-        Self { buf }
+        Self { buffer: buf }
     }
 }
 
@@ -68,9 +68,9 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let value = self.value.clone();
 
-        if self.buf.is_full() {
+        if self.buffer.is_full() {
             self.get_mut()
-                .buf
+                .buffer
                 .pending_push
                 .push((Some(cx.waker().clone()), value));
 
@@ -78,7 +78,8 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
         } else {
             let push_back = self.get_mut();
 
-            push_back.buf.internal_push_back(value.clone());
+            push_back.buffer.buffer.push_back(value);
+
             println!("{push_back:?}");
 
             Poll::Ready(())
@@ -90,9 +91,9 @@ impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.buf.is_empty() {
+        if self.buffer.is_empty() {
             self.get_mut()
-                .buf
+                .buffer
                 .pending_pop
                 .push(Some(cx.waker().clone()));
 
@@ -100,13 +101,13 @@ impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
         } else {
             let pop_front = self.get_mut();
 
-            let element = pop_front.buf.internal_pop_front();
+            let element = pop_front.buffer.buffer.pop_front();
             println!("{pop_front:?}");
 
             match element {
                 Some(element) => Poll::Ready(element),
                 None => {
-                    pop_front.buf.pending_pop.push(Some(cx.waker().clone()));
+                    pop_front.buffer.pending_pop.push(Some(cx.waker().clone()));
                     Poll::Pending
                 }
             }
@@ -117,7 +118,7 @@ impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
 impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     pub fn new(len: usize) -> Self {
         Self {
-            buf: VecDeque::default(),
+            buffer: VecDeque::default(),
             capacity: len,
             pending_push: Vec::new(),
             pending_pop: Vec::new(),
@@ -125,22 +126,22 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     }
 
     fn is_full(&self) -> bool {
-        self.capacity == self.buf.len()
+        self.capacity == self.buffer.len()
     }
 
     fn is_empty(&self) -> bool {
-        self.buf.is_empty()
+        self.buffer.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.buf.len()
+        self.buffer.len()
     }
 
     pub fn contains(&self, value: &T) -> bool
     where
         T: PartialEq,
     {
-        self.buf.contains(value)
+        self.buffer.contains(value)
     }
 
     pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
