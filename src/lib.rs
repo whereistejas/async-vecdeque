@@ -14,19 +14,8 @@ use std::{
 pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin> {
     buf: VecDeque<T>,
     capacity: usize,
-    shared_state: Vec<SharedState<T>>,
-}
-
-#[derive(Debug, Clone)]
-struct SharedState<T: Clone + Debug + Unpin> {
-    pending: Operation<T>,
-    waker: Option<Waker>,
-}
-
-#[derive(Debug, Clone)]
-enum Operation<T: Clone + Debug + Unpin> {
-    PushBack(T),
-    PopFront,
+    pending_push: Vec<(Option<Waker>, T)>,
+    pending_pop: Vec<Option<Waker>>,
 }
 
 struct PushBack<'a, T: Clone + Debug + Unpin> {
@@ -37,10 +26,10 @@ struct PushBack<'a, T: Clone + Debug + Unpin> {
 impl<T: Clone + Debug + Unpin> Debug for PushBack<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "push_back -> len: {:?}, cap: {:?}, shared_state: {:?} value: {:?}",
+            "push_back -> len: {:?}, cap: {:?}, pending_push: {:?} value: {:?}",
             self.buf.len(),
             self.buf.capacity,
-            self.buf.shared_state,
+            self.buf.pending_push,
             self.value
         ))
     }
@@ -59,10 +48,10 @@ pub struct PopFront<'a, T: Clone + Debug + Unpin> {
 impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "pop_front -> len: {:?}, cap: {:?}, shared_state: {:?}",
+            "pop_front -> len: {:?}, cap: {:?}, pending_pop: {:?}",
             self.buf.len(),
             self.buf.capacity,
-            self.buf.shared_state
+            self.buf.pending_pop
         ))
     }
 }
@@ -80,11 +69,10 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
         let value = self.value.clone();
 
         if self.buf.is_full() {
-            println!("Pushing a value into pending list: {value:?}");
-            self.get_mut().buf.shared_state.push(SharedState {
-                pending: Operation::PushBack(value),
-                waker: Some(cx.waker().clone()),
-            });
+            self.get_mut()
+                .buf
+                .pending_push
+                .push((Some(cx.waker().clone()), value));
 
             Poll::Pending
         } else {
@@ -101,8 +89,13 @@ impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
 impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
     type Output = T;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.buf.is_empty() {
+            self.get_mut()
+                .buf
+                .pending_pop
+                .push(Some(cx.waker().clone()));
+
             Poll::Pending
         } else {
             let pop_front = self.get_mut();
@@ -112,7 +105,10 @@ impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
 
             match element {
                 Some(element) => Poll::Ready(element),
-                None => Poll::Pending,
+                None => {
+                    pop_front.buf.pending_pop.push(Some(cx.waker().clone()));
+                    Poll::Pending
+                }
             }
         }
     }
@@ -123,7 +119,8 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
         Self {
             buf: VecDeque::default(),
             capacity: len,
-            shared_state: Vec::new(),
+            pending_push: Vec::new(),
+            pending_pop: Vec::new(),
         }
     }
 
