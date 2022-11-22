@@ -10,7 +10,7 @@ use std::{
 };
 
 // TODO: Get rid of this `Clone` and all the clones that follow it.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin + PartialEq> {
     buffer: VecDeque<T>,
     capacity: usize,
@@ -73,7 +73,7 @@ impl<T: Clone + Debug + Unpin + PartialEq> Future for PushBack<'_, T> {
 
         let value = push_back.value.clone();
 
-        while let Some(waker) = push_back.buffer.pending_pop.iter_mut().next() {
+        for waker in push_back.buffer.pending_pop.iter_mut() {
             if let Some(waker) = waker.take() {
                 waker.wake()
             }
@@ -107,6 +107,7 @@ impl<T: Clone + Debug + Unpin + PartialEq> Future for PushBack<'_, T> {
             while let Some((idx, (waker, value))) =
                 push_back.buffer.pending_push.iter().enumerate().next()
             {
+                println!("Trying to push value: {value:?}");
                 if waker.is_none() {
                     push_back.buffer.buffer.push_back(value.clone());
                     push_back.buffer.pending_push.remove(idx);
@@ -210,7 +211,6 @@ impl<T: Clone + Debug + Unpin + PartialEq> ConstSizeVecDeque<T> {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
-    use tokio::time;
     use tokio::{select, time};
 
     use super::*;
@@ -239,6 +239,20 @@ mod tests {
         assert_eq!(item, 1);
 
         // assert that 11 has been pushed into the buffer.
-        assert!(tester.contains(&11));
+        let mut stop = 0;
+        loop {
+            if tester.pending_push.is_empty() {
+                break;
+            } else {
+                stop += 1;
+                if stop <= 5 {
+                    time::sleep(Duration::from_secs(1)).await
+                } else {
+                    panic!("Timed out! {tester:?}")
+                }
+            }
+        }
+
+        assert!(tester.contains(&11))
     }
 }
