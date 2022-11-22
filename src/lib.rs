@@ -211,6 +211,7 @@ impl<T: Clone + Debug + Unpin + PartialEq> ConstSizeVecDeque<T> {
 mod tests {
     use std::time::Duration;
     use tokio::time;
+    use tokio::{select, time};
 
     use super::*;
 
@@ -226,9 +227,12 @@ mod tests {
 
         // on the 11th item, the task should block.
         // NOTE: This causes the future to be polled twice.
-        let fut = tester.push_back(11);
-        let res = time::timeout(Duration::from_secs(1), fut).await;
-        assert!(res.is_err());
+        let result = select! {
+            _ = tester.push_back(11) => Ok(()),
+            _ = time::sleep(Duration::from_secs(1)) => Err(()),
+        };
+
+        assert!(result.is_err());
 
         // pop an item.
         let item = tester.pop_front().await;
