@@ -11,101 +11,153 @@ use std::{
 
 // TODO: Get rid of this `Clone` and all the clones that follow it.
 #[derive(Debug, Clone)]
-pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin> {
+pub struct ConstSizeVecDeque<T: Clone + Debug + Unpin + PartialEq> {
     buffer: VecDeque<T>,
     capacity: usize,
     pending_push: Vec<(Option<Waker>, T)>,
     pending_pop: Vec<Option<Waker>>,
 }
 
-struct PushBack<'a, T: Clone + Debug + Unpin> {
+struct PushBack<'a, T: Clone + Debug + Unpin + PartialEq> {
     buffer: &'a mut ConstSizeVecDeque<T>,
     value: T,
 }
 
-impl<T: Clone + Debug + Unpin> Debug for PushBack<'_, T> {
+impl<T: Clone + Debug + Unpin + PartialEq> Debug for PushBack<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "push_back -> len: {:?}, cap: {:?}, pending_push: {:?} value: {:?}",
+            "push_back -> len: {:?}, cap: {:?}, pending_push: {:?}, pending_pop: {:?}, value: {:?}",
             self.buffer.len(),
             self.buffer.capacity,
             self.buffer.pending_push,
+            self.buffer.pending_pop,
             self.value
         ))
     }
 }
 
-impl<'a, T: Clone + Debug + Unpin> PushBack<'a, T> {
+impl<'a, T: Clone + Debug + Unpin + PartialEq> PushBack<'a, T> {
     fn new(buf: &'a mut ConstSizeVecDeque<T>, value: T) -> Self {
         Self { buffer: buf, value }
     }
 }
 
-pub struct PopFront<'a, T: Clone + Debug + Unpin> {
+pub struct PopFront<'a, T: Clone + Debug + Unpin + PartialEq> {
     buffer: &'a mut ConstSizeVecDeque<T>,
 }
 
-impl<T: Clone + Debug + Unpin> Debug for PopFront<'_, T> {
+impl<T: Clone + Debug + Unpin + PartialEq> Debug for PopFront<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "pop_front -> len: {:?}, cap: {:?}, pending_pop: {:?}",
+            "pop_front -> len: {:?}, cap: {:?}, pending_push: {:?}, pending_pop: {:?}",
             self.buffer.len(),
             self.buffer.capacity,
+            self.buffer.pending_push,
             self.buffer.pending_pop
         ))
     }
 }
 
-impl<'a, T: Clone + Debug + Unpin> PopFront<'a, T> {
+impl<'a, T: Clone + Debug + Unpin + PartialEq> PopFront<'a, T> {
     fn new(buf: &'a mut ConstSizeVecDeque<T>) -> Self {
         Self { buffer: buf }
     }
 }
 
-impl<T: Clone + Debug + Unpin> Future for PushBack<'_, T> {
+impl<T: Clone + Debug + Unpin + PartialEq> Future for PushBack<'_, T> {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let value = self.value.clone();
+        let push_back = self.get_mut();
+        println!("{push_back:?}");
 
-        if self.buffer.is_full() {
-            self.get_mut()
+        let value = push_back.value.clone();
+
+        while let Some(waker) = push_back.buffer.pending_pop.iter_mut().next() {
+            if let Some(waker) = waker.take() {
+                waker.wake()
+            }
+        }
+
+        if push_back.buffer.is_full() {
+            // Don't add the same value twice.
+            if push_back
                 .buffer
                 .pending_push
-                .push((Some(cx.waker().clone()), value));
+                .iter()
+                .all(|(_, pending_value)| pending_value != &value)
+            {
+                println!("Pushing {value:?} into pending list.");
+                push_back
+                    .buffer
+                    .pending_push
+                    .push((Some(cx.waker().clone()), value));
+                println!("{push_back:?}");
+            } else {
+                for (waker, value) in push_back.buffer.pending_push.iter() {
+                    println!("{value:?}");
+                    if waker.is_none() {
+                        panic!()
+                    }
+                }
+            }
 
             Poll::Pending
         } else {
-            let push_back = self.get_mut();
+            while let Some((idx, (waker, value))) =
+                push_back.buffer.pending_push.iter().enumerate().next()
+            {
+                if waker.is_none() {
+                    push_back.buffer.buffer.push_back(value.clone());
+                    push_back.buffer.pending_push.remove(idx);
+                }
+            }
 
             push_back.buffer.buffer.push_back(value);
-
-            println!("{push_back:?}");
 
             Poll::Ready(())
         }
     }
 }
 
-impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
+impl<T: Clone + Debug + Unpin + PartialEq> Future for PopFront<'_, T> {
     type Output = T;
-
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.buffer.is_empty() {
-            self.get_mut()
-                .buffer
-                .pending_pop
-                .push(Some(cx.waker().clone()));
+        let pop_front = self.get_mut();
+
+        println!("{pop_front:?}");
+        if pop_front.buffer.is_empty() {
+            pop_front.buffer.pending_pop.push(Some(cx.waker().clone()));
 
             Poll::Pending
         } else {
-            let pop_front = self.get_mut();
+            while let Some((idx, waker)) = pop_front.buffer.pending_pop.iter().enumerate().next() {
+                if waker.is_none() {
+                    let element = pop_front.buffer.buffer.pop_front();
+                    pop_front.buffer.pending_pop.remove(idx);
+                    return match element {
+                        Some(element) => Poll::Ready(element),
+                        None => Poll::Pending,
+                    };
+                }
+            }
 
             let element = pop_front.buffer.buffer.pop_front();
-            println!("{pop_front:?}");
+            println!("Updated length post popping: {:?}", pop_front.buffer.len());
 
             match element {
-                Some(element) => Poll::Ready(element),
+                Some(element) => {
+                    // NOTE: It is possible that a PushBack operation is waiting because the list is full.
+                    // Let's repoll the pending the operations.
+                    for (waker, value) in pop_front.buffer.pending_push.iter_mut() {
+                        println!("Waking task for: {value:?}");
+                        if let Some(waker) = waker.take() {
+                            waker.wake()
+                        }
+                    }
+
+                    Poll::Ready(element)
+                }
                 None => {
                     pop_front.buffer.pending_pop.push(Some(cx.waker().clone()));
                     Poll::Pending
@@ -115,7 +167,17 @@ impl<T: Clone + Debug + Unpin> Future for PopFront<'_, T> {
     }
 }
 
-impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
+impl<T: Clone + Debug + Unpin + PartialEq> ConstSizeVecDeque<T> {
+    pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
+        let push_back = PushBack::new(self, value);
+        push_back.into_future()
+    }
+
+    pub fn pop_front(&mut self) -> impl Future<Output = T> + '_ {
+        let pop_front = PopFront::new(self);
+        pop_front.into_future()
+    }
+
     pub fn new(len: usize) -> Self {
         Self {
             buffer: VecDeque::default(),
@@ -143,15 +205,6 @@ impl<T: Clone + Debug + Unpin> ConstSizeVecDeque<T> {
     {
         self.buffer.contains(value)
     }
-
-    pub fn push_back(&mut self, value: T) -> impl Future<Output = ()> + '_ {
-        let push_back = PushBack::new(self, value.clone());
-        push_back.into_future()
-    }
-    pub fn pop_front(&mut self) -> impl Future<Output = T> + '_ {
-        let pop_front = PopFront::new(self);
-        pop_front.into_future()
-    }
 }
 
 #[cfg(test)]
@@ -172,14 +225,16 @@ mod tests {
         }
 
         // on the 11th item, the task should block.
+        // NOTE: This causes the future to be polled twice.
         let fut = tester.push_back(11);
         let res = time::timeout(Duration::from_secs(1), fut).await;
         assert!(res.is_err());
 
         // pop an item.
-        let _ = tester.pop_front().await;
+        let item = tester.pop_front().await;
+        assert_eq!(item, 1);
 
         // assert that 11 has been pushed into the buffer.
-        assert!(tester.contains(&10))
+        assert!(tester.contains(&11));
     }
 }
