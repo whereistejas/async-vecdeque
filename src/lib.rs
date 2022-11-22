@@ -226,7 +226,7 @@ mod tests {
         }
 
         // on the 11th item, the task should block.
-        // NOTE: This causes the future to be polled twice.
+        // NOTE: This causes the future to be polled multiple times.
         let result = select! {
             _ = tester.push_back(11) => Ok(()),
             _ = time::sleep(Duration::from_secs(1)) => Err(()),
